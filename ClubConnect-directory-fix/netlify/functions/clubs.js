@@ -9,26 +9,47 @@ export default async function handler() {
     const url = new URL(APPS_SCRIPT_URL);
     url.searchParams.set('callback', callback);
 
-    const response = await fetch(url.toString(), {
-      redirect: 'follow'
+    // Inspect the first response without automatically
+    // following Google's redirect.
+    const first = await fetch(url.toString(), {
+      redirect: 'manual'
     });
+
+    console.log('Initial status:', first.status);
+    console.log(
+      'Initial redirect destination:',
+      first.headers.get('location')
+    );
+
+    let response = first;
+
+    if (first.status >= 300 && first.status < 400) {
+      const location = first.headers.get('location');
+
+      if (!location) {
+        throw new Error('Google redirect has no location');
+      }
+
+      response = await fetch(location, {
+        redirect: 'follow'
+      });
+
+      console.log('Final status:', response.status);
+    }
 
     if (!response.ok) {
       throw new Error(
-        'Apps Script returned HTTP ' + response.status
+        'Google returned HTTP ' + response.status
       );
     }
 
     const text = (await response.text()).trim();
 
-    // Expected response:
-    // clubconnect_cb_1234567890123({"ok":true,"clubs":[...]});
     const prefix = callback + '(';
 
     if (!text.startsWith(prefix)) {
       throw new Error(
-        'Unexpected Apps Script response: ' +
-        text.slice(0, 150)
+        'Unexpected response: ' + text.slice(0, 100)
       );
     }
 
@@ -38,25 +59,15 @@ export default async function handler() {
 
     const data = JSON.parse(jsonText);
 
-    if (!data.ok || !Array.isArray(data.clubs)) {
-      throw new Error(
-        data.error || 'Club data unavailable'
-      );
-    }
-
-    return new Response(
-      JSON.stringify(data),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'public, max-age=60'
-        }
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json'
       }
-    );
+    });
 
   } catch (error) {
-    console.error('Club loading failed:', error);
+    console.error('ClubConnect diagnostic error:', error);
 
     return new Response(
       JSON.stringify({
