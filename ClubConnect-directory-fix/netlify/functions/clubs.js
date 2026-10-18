@@ -2,7 +2,7 @@
 const APPS_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbx7iSl_QkYHxyD1a46zXg7mBsxduArwlmgsGcF6pa9_gVkKcQxQlElJkKcQxQlElJkQimolCFmJAzvg/exec';
 
-exports.handler = async function () {
+export default async function handler() {
   try {
     const callback = 'clubconnect_cb_1234567890123';
 
@@ -21,23 +21,22 @@ exports.handler = async function () {
 
     const text = (await response.text()).trim();
 
-    // Google Apps Script returns JSONP:
-    // clubconnect_cb_1234567890123({...});
-    const pattern = new RegExp(
-      '^' + callback.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-      '\\(([\\s\\S]*)\\);?$'
-    );
+    // Expected response:
+    // clubconnect_cb_1234567890123({"ok":true,"clubs":[...]});
+    const prefix = callback + '(';
 
-    const match = text.match(pattern);
-
-    if (!match) {
+    if (!text.startsWith(prefix)) {
       throw new Error(
         'Unexpected Apps Script response: ' +
         text.slice(0, 150)
       );
     }
 
-    const data = JSON.parse(match[1]);
+    const jsonText = text
+      .slice(prefix.length)
+      .replace(/\);\s*$/, '');
+
+    const data = JSON.parse(jsonText);
 
     if (!data.ok || !Array.isArray(data.clubs)) {
       throw new Error(
@@ -45,27 +44,31 @@ exports.handler = async function () {
       );
     }
 
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=60'
-      },
-      body: JSON.stringify(data)
-    };
+    return new Response(
+      JSON.stringify(data),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=60'
+        }
+      }
+    );
 
   } catch (error) {
     console.error('Club loading failed:', error);
 
-    return {
-      statusCode: 502,
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
+    return new Response(
+      JSON.stringify({
         ok: false,
         error: error.message
-      })
-    };
+      }),
+      {
+        status: 502,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
   }
-};
+}
