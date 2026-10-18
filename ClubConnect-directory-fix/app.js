@@ -28,7 +28,8 @@ let client = null;
 let session = null;
 
 const configured = value =>
-  value &&
+  typeof value === 'string' &&
+  value.trim() !== '' &&
   !value.startsWith('REPLACE_') &&
   !value.includes('YOUR-NEW-');
 
@@ -37,6 +38,7 @@ const configured = value =>
 // --------------------------------------
 
 if (
+  cfg &&
   configured(cfg.supabaseUrl) &&
   configured(cfg.supabaseAnonKey) &&
   window.supabase
@@ -181,34 +183,71 @@ function render() {
 }
 
 // --------------------------------------
-// LOAD CLUBS FROM NETLIFY FUNCTION
+// LOAD CLUBS DIRECTLY FROM GOOGLE
 // --------------------------------------
 
-async function loadClubs() {
-  try {
-    console.log('ClubConnect: Loading clubs...');
+function loadClubs() {
+  console.log('ClubConnect: Loading clubs...');
 
-    const response = await fetch(
-      '/.netlify/functions/clubs',
-      {
-        method: 'GET',
-        cache: 'no-store'
-      }
+  if (!cfg || !configured(cfg.appsScriptUrl)) {
+    showLoadError(
+      'Google Apps Script URL is not configured.'
+    );
+    return;
+  }
+
+  // Apps Script accepts callbacks beginning with
+  // clubconnect_cb_ followed by 10-20 digits.
+  const callbackName =
+    'clubconnect_cb_' +
+    Date.now() +
+    Math.floor(Math.random() * 1000000);
+
+  const script = document.createElement('script');
+
+  let finished = false;
+
+  const timeout = setTimeout(() => {
+    fail('Google Apps Script did not respond in time.');
+  }, 15000);
+
+  function cleanup() {
+    clearTimeout(timeout);
+    script.remove();
+    delete window[callbackName];
+  }
+
+  function fail(message) {
+    if (finished) return;
+
+    finished = true;
+    cleanup();
+
+    console.error(
+      'ClubConnect loading error:',
+      message
     );
 
-    if (!response.ok) {
-      throw new Error(
-        'Club service returned HTTP ' +
-        response.status
-      );
-    }
+    showLoadError(message);
+  }
 
-    const data = await response.json();
+  // Google Apps Script calls this function
+  // when the club data is ready.
+  window[callbackName] = function(data) {
+    if (finished) return;
 
-    if (!data.ok || !Array.isArray(data.clubs)) {
-      throw new Error(
-        data.error || 'Invalid club data'
+    finished = true;
+    cleanup();
+
+    if (
+      !data ||
+      !data.ok ||
+      !Array.isArray(data.clubs)
+    ) {
+      showLoadError(
+        data?.error || 'Invalid club data received.'
       );
+      return;
     }
 
     clubs = data.clubs;
@@ -220,14 +259,26 @@ async function loadClubs() {
     );
 
     render();
+  };
 
-  } catch (error) {
-    console.error(
-      'ClubConnect loading error:',
-      error
+  script.onerror = () => {
+    fail('Could not load Google Apps Script.');
+  };
+
+  try {
+    const url = new URL(cfg.appsScriptUrl);
+
+    url.searchParams.set(
+      'callback',
+      callbackName
     );
 
-    showLoadError(error.message);
+    script.src = url.toString();
+
+    document.head.appendChild(script);
+
+  } catch (error) {
+    fail(error.message);
   }
 }
 
@@ -311,7 +362,7 @@ async function submitClub(event) {
     return;
   }
 
-  if (!configured(cfg.appsScriptUrl)) {
+  if (!cfg || !configured(cfg.appsScriptUrl)) {
     message.textContent =
       'Google Sheets connection is not configured yet.';
     return;
@@ -459,7 +510,7 @@ function init() {
   $('loginForm').onsubmit = login;
   $('clubForm').onsubmit = submitClub;
 
-  // Load public clubs even if Supabase is not configured.
+  // Load public clubs without requiring Supabase.
   loadClubs();
 }
 
