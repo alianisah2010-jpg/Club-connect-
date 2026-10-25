@@ -18,5 +18,39 @@
     "location": "mathsci",
     "join": "Audition or tryout",
     "featuredStatus": ""
+  },
+  
+[
+  {
+    "name": "Automotive Engineering Club",
+    "category": "STEM",
+    "description": "Auto club",
+    "days": "Club Block 2",
+    "time": "3-4pm",
+    "location": "Room",
+    "join": "Just show up",
+    "featuredStatus": ""
+  },
+  {
+    "name": "Sources of Strength",
+    "category": "Business",
+    "description": "strength",
+    "days": "Club Block 1",
+    "time": "12-12:50",
+    "location": "mathsci",
+    "join": "Audition or tryout",
+    "featuredStatus": ""
+  },
+  {
+    "name": "deca",
+    "category": "Academic",
+    "description": "talking",
+    "days": "d",
+    "time": "12-12:50",
+    "location": "mathsci",
+    "join": "join",
+    "featuredStatus": ""
   }
+]
+
 ]
