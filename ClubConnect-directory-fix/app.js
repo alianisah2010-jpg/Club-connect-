@@ -1,5 +1,5 @@
 
-const cfg = window.CLUBCONNECT_CONFIG;
+const cfg = window.CLUBCONNECT_CONFIG || {};
 
 const categories = [
   'Academic',
@@ -34,11 +34,10 @@ const configured = value =>
   !value.includes('YOUR-NEW-');
 
 // --------------------------------------
-// SUPABASE LOGIN
+// SUPABASE LOGIN (UNCHANGED FOR NOW)
 // --------------------------------------
 
 if (
-  cfg &&
   configured(cfg.supabaseUrl) &&
   configured(cfg.supabaseAnonKey) &&
   window.supabase
@@ -105,37 +104,14 @@ function card(club) {
       <h3>${escapeHtml(club.name)}</h3>
 
       <p>
-        ${escapeHtml(
-          club.description || 'Details coming soon.'
-        )}
+        ${escapeHtml(club.description || 'Details coming soon.')}
       </p>
 
       <div class="details">
-        ${
-          club.days
-            ? '<div>📅 ' + escapeHtml(club.days) + '</div>'
-            : ''
-        }
-
-        ${
-          club.time
-            ? '<div>🕒 ' + escapeHtml(club.time) + '</div>'
-            : ''
-        }
-
-        ${
-          club.location
-            ? '<div>📍 ' + escapeHtml(club.location) + '</div>'
-            : ''
-        }
-
-        ${
-          club.join
-            ? '<div>How to join: ' +
-              escapeHtml(club.join) +
-              '</div>'
-            : ''
-        }
+        ${club.days ? '<div>📅 ' + escapeHtml(club.days) + '</div>' : ''}
+        ${club.time ? '<div>🕒 ' + escapeHtml(club.time) + '</div>' : ''}
+        ${club.location ? '<div>📍 ' + escapeHtml(club.location) + '</div>' : ''}
+        ${club.join ? '<div>How to join: ' + escapeHtml(club.join) + '</div>' : ''}
       </div>
     </article>
   `;
@@ -150,8 +126,7 @@ function render() {
   const category = $('categoryFilter').value;
 
   const filtered = clubs.filter(club => {
-    const matchesCategory =
-      !category || club.category === category;
+    const matchesCategory = !category || club.category === category;
 
     const searchableText = [
       club.name,
@@ -160,10 +135,7 @@ function render() {
       club.location
     ].join(' ').toLowerCase();
 
-    return (
-      matchesCategory &&
-      searchableText.includes(query)
-    );
+    return matchesCategory && searchableText.includes(query);
   });
 
   $('clubCards').innerHTML = filtered.length
@@ -183,102 +155,34 @@ function render() {
 }
 
 // --------------------------------------
-// LOAD CLUBS DIRECTLY FROM GOOGLE
+// LOAD APPROVED CLUBS FROM clubs.json
 // --------------------------------------
 
-function loadClubs() {
-  console.log('ClubConnect: Loading clubs...');
+async function loadClubs() {
+  try {
+    console.log('ClubConnect: Loading clubs.json...');
 
-  if (!cfg || !configured(cfg.appsScriptUrl)) {
-    showLoadError(
-      'Google Apps Script URL is not configured.'
-    );
-    return;
-  }
+    const response = await fetch('/clubs.json', {
+      method: 'GET',
+      cache: 'no-store'
+    });
 
-  // Apps Script accepts callbacks beginning with
-  // clubconnect_cb_ followed by 10-20 digits.
-  const callbackName =
-    'clubconnect_cb_' +
-    Date.now() +
-    Math.floor(Math.random() * 1000000);
-
-  const script = document.createElement('script');
-
-  let finished = false;
-
-  const timeout = setTimeout(() => {
-    fail('Google Apps Script did not respond in time.');
-  }, 15000);
-
-  function cleanup() {
-    clearTimeout(timeout);
-    script.remove();
-    delete window[callbackName];
-  }
-
-  function fail(message) {
-    if (finished) return;
-
-    finished = true;
-    cleanup();
-
-    console.error(
-      'ClubConnect loading error:',
-      message
-    );
-
-    showLoadError(message);
-  }
-
-  // Google Apps Script calls this function
-  // when the club data is ready.
-  window[callbackName] = function(data) {
-    if (finished) return;
-
-    finished = true;
-    cleanup();
-
-    if (
-      !data ||
-      !data.ok ||
-      !Array.isArray(data.clubs)
-    ) {
-      showLoadError(
-        data?.error || 'Invalid club data received.'
-      );
-      return;
+    if (!response.ok) {
+      throw new Error('clubs.json returned HTTP ' + response.status);
     }
 
-    clubs = data.clubs;
+    const data = await response.json();
 
-    console.log(
-      'ClubConnect successfully loaded',
-      clubs.length,
-      'clubs'
-    );
+    if (!Array.isArray(data)) {
+      throw new Error('clubs.json must contain an array of clubs.');
+    }
 
+    clubs = data;
+    console.log('ClubConnect loaded', clubs.length, 'clubs');
     render();
-  };
-
-  script.onerror = () => {
-    fail('Could not load Google Apps Script.');
-  };
-
-  try {
-    const url = new URL(cfg.appsScriptUrl);
-
-    url.searchParams.set(
-      'callback',
-      callbackName
-    );
-
-    script.src = url.toString();
-
-    document.head.appendChild(script);
-
   } catch (error) {
-    fail(error.message);
+    console.error('ClubConnect loading error:', error);
+    showLoadError(error.message);
   }
 }
 
@@ -287,21 +191,17 @@ function loadClubs() {
 // --------------------------------------
 
 function showLoadError(reason) {
-  const safe = escapeHtml(
-    reason || 'Unknown connection error'
-  );
+  const safe = escapeHtml(reason || 'Unknown connection error');
 
   $('clubCards').innerHTML =
-    '<div class="empty">Could not load clubs. ' +
-    safe +
-    '</div>';
+    '<div class="empty">Could not load clubs. ' + safe + '</div>';
 
   $('featuredCards').innerHTML =
     '<div class="empty">Could not load featured clubs.</div>';
 }
 
 // --------------------------------------
-// SUPABASE EMAIL LOGIN
+// SUPABASE EMAIL LOGIN (UNCHANGED)
 // --------------------------------------
 
 async function login(event) {
@@ -316,17 +216,13 @@ async function login(event) {
   }
 
   if (!client) {
-    $('loginMessage').textContent =
-      'Supabase is not configured yet.';
+    $('loginMessage').textContent = 'Supabase is not configured yet.';
     return;
   }
 
   const redirect = cfg.siteUrl;
 
-  if (
-    !configured(redirect) ||
-    redirect.includes('localhost')
-  ) {
+  if (!configured(redirect) || redirect.includes('localhost')) {
     $('loginMessage').textContent =
       'Set your published siteUrl in config.js first.';
     return;
@@ -346,7 +242,7 @@ async function login(event) {
 }
 
 // --------------------------------------
-// CLUB REGISTRATION
+// CLUB REGISTRATION (TO BE UPDATED IN STEP 3)
 // --------------------------------------
 
 async function submitClub(event) {
@@ -354,77 +250,10 @@ async function submitClub(event) {
 
   const message = $('formMessage');
 
-  if (!session) {
-    message.textContent =
-      'Please sign in with your Overlake email first.';
-
-    $('loginDialog').showModal();
-    return;
-  }
-
-  if (!cfg || !configured(cfg.appsScriptUrl)) {
-    message.textContent =
-      'Google Sheets connection is not configured yet.';
-    return;
-  }
-
-  const formData = new FormData(event.target);
-
-  const fields = {
-    clubName: formData.get('clubName'),
-    description: formData.get('description'),
-    category: formData.get('category'),
-    meetingDays: formData.get('meetingDays'),
-    meetingTime: formData.get('meetingTime'),
-    meetingLocation: formData.get('meetingLocation'),
-    howToJoin: formData.get('howToJoin'),
-    featuredRequested:
-      formData.has('featuredRequested')
-        ? 'Yes'
-        : 'No'
-  };
-
-  if (
-    !fields.clubName ||
-    !fields.description ||
-    !fields.category
-  ) {
-    message.textContent =
-      'Complete all required fields.';
-    return;
-  }
-
-  message.textContent = 'Submitting...';
-
-  try {
-    const token = session.access_token;
-
-    const body = new URLSearchParams({
-      ...fields,
-      accessToken: token
-    });
-
-    await fetch(cfg.appsScriptUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type':
-          'application/x-www-form-urlencoded'
-      },
-      body
-    });
-
-    message.textContent =
-      'Submission sent. Please verify that it appears ' +
-      'in the HTML Form Responses tab.';
-
-    event.target.reset();
-
-  } catch (error) {
-    message.textContent =
-      'Could not send submission: ' +
-      error.message;
-  }
+  // Registration will be connected to Netlify Forms in Step 3.
+  // Do not send submissions to the old Google Apps Script endpoint.
+  message.textContent =
+    'Club submissions are being updated. Please check back soon.';
 }
 
 // --------------------------------------
@@ -446,55 +275,36 @@ function init() {
       `
     );
 
-    for (const id of [
-      'categoryFilter',
-      'interest',
-      'formCategory'
-    ]) {
+    for (const id of ['categoryFilter', 'interest', 'formCategory']) {
       const option = document.createElement('option');
-
       option.value = category;
       option.textContent = category;
-
       $(id).append(option);
     }
   }
 
-  document
-    .querySelectorAll('.category-card')
-    .forEach(button => {
-      button.addEventListener('click', () => {
-        $('categoryFilter').value =
-          button.dataset.category;
-
-        location.hash = 'clubs';
-        render();
-      });
+  document.querySelectorAll('.category-card').forEach(button => {
+    button.addEventListener('click', () => {
+      $('categoryFilter').value = button.dataset.category;
+      location.hash = 'clubs';
+      render();
     });
+  });
 
   $('search').addEventListener('input', render);
-
-  $('categoryFilter').addEventListener(
-    'change',
-    render
-  );
+  $('categoryFilter').addEventListener('change', render);
 
   $('findMatches').addEventListener('click', () => {
     const category = $('interest').value;
 
     if (!category) {
-      $('quizResult').textContent =
-        'Choose an interest first.';
+      $('quizResult').textContent = 'Choose an interest first.';
       return;
     }
 
     $('categoryFilter').value = category;
-
     render();
-
-    $('quizResult').textContent =
-      `Showing clubs in ${category}.`;
-
+    $('quizResult').textContent = `Showing clubs in ${category}.`;
     location.hash = 'clubs';
   });
 
@@ -510,7 +320,6 @@ function init() {
   $('loginForm').onsubmit = login;
   $('clubForm').onsubmit = submitClub;
 
-  // Load public clubs without requiring Supabase.
   loadClubs();
 }
 
